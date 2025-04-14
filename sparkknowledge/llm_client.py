@@ -1,3 +1,8 @@
+"""
+Файл с определением llm агента, выполняющего запросы к LLM Mistral.
+"""
+
+
 import time
 
 from django.conf import settings
@@ -25,7 +30,8 @@ class MistralClient:
         простое сообщение (prompt), либо полный список сообщений для поддержания диалога.
 
         :param prompt: Текст запроса для модели.
-        :param messages: Список сообщений в формате [{"role": "user"|"assistant"|"system", "content": ...}, ...]
+        :param messages: Список сообщений в формате
+        [{"role": "user"|"assistant"|"system", "content": ...}, ...]
         :return: Ответ модели.
         """
         now = time.time()

@@ -18,11 +18,16 @@ django-environ = "^0.12.0"
 setuptools = "^78.1.0"
 
 [tool.poetry.group.dev.dependencies]
-pylint = "^2.15"
+pylint = "^3.3.6"
 black = "^23.1"
 isort = "^5.12"
 pytest = "^7.1"
+astroid = "^3.3.9"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pylint]
+ignore = ["migrations"]
+init-hook = 'import sys; sys.path.append("SparkKnowledge")'

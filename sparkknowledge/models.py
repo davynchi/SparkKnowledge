@@ -1,3 +1,7 @@
+"""
+Модуль моделей приложения SparkKnowledge.
+"""
+
 from django.db import models
 
 
@@ -19,7 +23,7 @@ class QuizAttempt(models.Model):
     result_summary = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        return f"{self.nickname} - {self.theme} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"
+        return f"{self.nickname} - {self.theme} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"  # pylint: disable=no-member
 
 
 class QuizDialogue(models.Model):
@@ -37,4 +41,4 @@ class QuizDialogue(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"[{self.timestamp.strftime('%H:%M:%S')}] {self.sender}: {self.message[:30]}..."
+        return f"[{self.timestamp.strftime('%H:%M:%S')}] {self.sender}: {self.message[:30]}..."  # pylint: disable=no-member, unsubscriptable-object
