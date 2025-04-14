@@ -1,0 +1,105 @@
+{% extends "sparkknowledge/base.html" %}
+
+{% block title %}Викторина{% endblock %}
+
+{% block extra_head %}
+<!-- Конфигурация MathJax для поддержки $...$ как inline math -->
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']]
+    }
+  };
+</script>
+<!-- Подключение MathJax для поддержки LaTeX -->
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var timeLeftElement = document.getElementById('time-left');
+    var totalTime = parseInt(timeLeftElement.getAttribute('data-timer'), 10);
+    var currentTime = totalTime;
+    timeLeftElement.textContent = currentTime;
+
+    var timerInterval = setInterval(function(){
+        currentTime--;
+        if (currentTime >= 0) {
+            timeLeftElement.textContent = currentTime;
+        }
+        if (currentTime <= 0) {
+            clearInterval(timerInterval);
+            var answerInput = document.getElementById('answer');
+            if (answerInput) answerInput.disabled = true;
+            var submitButton = document.getElementById('submit-button');
+            if (submitButton) submitButton.disabled = true;
+            document.getElementById('finish-button').click();
+        }
+    }, 1000);
+
+    // Обработка LaTeX после загрузки
+    if (window.MathJax) {
+        MathJax.typesetPromise();
+    }
+});
+</script>
+{% endblock %}
+
+{% block content %}
+  <h1>Викторина для {{ attempt.nickname }}</h1>
+
+  <!-- Таймер -->
+  <div class="alert alert-info">
+    Время викторины: <span id="time-left" data-timer="{{ remaining_time }}"></span> секунд(ы)
+  </div>
+
+  <!-- История диалога -->
+  <div class="card mb-3">
+    <div class="card-header">История диалога</div>
+    <ul class="list-group list-group-flush">
+      {% for msg in history %}
+        <li class="list-group-item">
+          <strong>{{ msg.role|title }}:</strong><br>
+          <span>{{ msg.content|linebreaksbr|safe }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Отображение ответа модели (feedback) -->
+  {% if feedback %}
+    <div class="alert alert-secondary">
+      <strong>Ответ модели:</strong><br>
+      <span>{{ feedback|linebreaksbr|safe }}</span>
+    </div>
+  {% endif %}
+
+  {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    {% if multiple_options %}
+      <div class="mb-3">
+        <label><strong>Варианты ответа:</strong></label>
+        <div class="form-check ms-3">
+          {% for opt in multiple_options %}
+            <div>
+              <input type="radio" class="form-check-input" name="selected_option" id="opt{{ forloop.counter }}" value="{{ opt }}">
+              <label for="opt{{ forloop.counter }}" class="form-check-label">{{ opt }}</label>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% else %}
+      <div class="mb-3">
+        <label for="answer" class="form-label"><strong>Ваш ответ:</strong></label>
+        <input type="text" class="form-control" id="answer" name="answer" placeholder="Введите ответ">
+      </div>
+    {% endif %}
+    <button type="submit" id="submit-button" class="btn btn-success">Отправить ответ</button>
+    <button type="submit" name="finish" value="true" id="finish-button" class="btn btn-danger">Завершить викторину</button>
+  </form>
+{% endblock %}

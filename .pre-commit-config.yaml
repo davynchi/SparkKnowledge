@@ -1,0 +1,49 @@
+default_language_version:
+  python: python3.12
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        additional_dependencies: ["setuptools>=78.0.0", "pip>=23.1"]
+
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        additional_dependencies: ["setuptools>=78.0.0", "pip>=23.1"]
+
+  - repo: https://github.com/timothycrosley/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        additional_dependencies: ["setuptools>=78.0.0", "pip>=23.1"]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+        args: [--ignore=E501]
+        additional_dependencies:
+          [flake8-bugbear, Flake8-pyproject, "setuptools>=78.0.0", "pip>=23.1"]
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        types_or: [markdown, yaml, toml, json, dockerfile, shell]
+        additional_dependencies: ["prettier@3.1.0", "prettier-plugin-sh@0.13.1"]
+        args: [--print-width=80, --prose-wrap=always]
+
+  # - repo: https://github.com/PyCQA/pylint
+  #   rev: v2.15.0
+  #   hooks:
+  #     - id: pylint
+  #       additional_dependencies: ['setuptools>=78.0.0', 'pip>=23.1']

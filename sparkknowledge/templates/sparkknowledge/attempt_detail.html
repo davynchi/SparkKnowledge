@@ -1,0 +1,31 @@
+{% extends "sparkknowledge/base.html" %}
+
+{% block title %}Диалог для попытки {{ attempt.id }}{% endblock %}
+
+{% block content %}
+  <h1>Диалог для попытки {{ attempt.id }}</h1>
+  {% if conversation_lines %}
+    <div class="card">
+      <div class="card-body">
+        {% for msg in conversation_lines %}
+          {% if msg.role == "assistant" %}
+            <p class="text-primary"><strong>Модель:</strong><br>
+              <span>{{ msg.content|linebreaksbr }}</span>
+            </p>
+          {% elif msg.role == "user" %}
+            <p class="text-success"><strong>Пользователь:</strong><br>
+              <span>{{ msg.content|linebreaksbr }}</span>
+            </p>
+          {% else %}
+            <p><strong>{{ msg.role }}:</strong><br>
+              <span>{{ msg.content|linebreaksbr }}</span>
+            </p>
+          {% endif %}
+          <hr>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    <p>Диалог отсутствует. Попытка не была завершена.</p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "sparkknowledge/base.html" %}
+
+{% block title %}Настройка викторины{% endblock %}
+
+{% block content %}
+  <h1>Настройте вашу викторину</h1>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <!-- Поле Никнейм -->
+    <div class="mb-3">
+      {{ form.nickname.label_tag }}
+      {{ form.nickname }}
+      {% if form.nickname.errors %}
+        <div class="alert alert-danger mt-1" role="alert">
+          {{ form.nickname.errors|striptags }}
+        </div>
+      {% endif %}
+    </div>
+    <!-- Поле Тема -->
+    <div class="mb-3">
+      {{ form.theme.label_tag }}
+      {{ form.theme }}
+      {% if form.theme.errors %}
+        <div class="alert alert-danger mt-1" role="alert">
+          {{ form.theme.errors|striptags }}
+        </div>
+      {% endif %}
+    </div>
+    <!-- Поле Сложность -->
+    <div class="mb-3">
+      {{ form.difficulty.label_tag }}
+      {{ form.difficulty }}
+      {% if form.difficulty.errors %}
+        <div class="alert alert-danger mt-1" role="alert">
+          {{ form.difficulty.errors|striptags }}
+        </div>
+      {% endif %}
+    </div>
+    <!-- Поле Тип задания -->
+    <div class="mb-3">
+      {{ form.question_type.label_tag }}
+      {{ form.question_type }}
+      {% if form.question_type.errors %}
+        <div class="alert alert-danger mt-1" role="alert">
+          {{ form.question_type.errors|striptags }}
+        </div>
+      {% endif %}
+    </div>
+    <!-- Поле Время викторины (секунды) -->
+    <div class="mb-3">
+      {{ form.timer.label_tag }}
+      {{ form.timer }}
+      {% if form.timer.errors %}
+        <div class="alert alert-danger mt-1" role="alert">
+          {{ form.timer.errors|striptags }}
+        </div>
+      {% endif %}
+    </div>
+    <button type="submit" class="btn btn-primary">Начать</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "sparkknowledge/base.html" %}
+
+{% block title %}История попыток{% endblock %}
+
+{% block content %}
+  <h1>История попыток</h1>
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Никнейм</th>
+        <th>Тема</th>
+        <th>Дата</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for attempt in attempts %}
+      <tr>
+        <td>{{ attempt.nickname }}</td>
+        <td>{{ attempt.theme }}</td>
+        <td>{{ attempt.created_at }}</td>
+        <td>
+          <a href="{% url 'sparkknowledge:attempt_detail' attempt.id %}" class="btn btn-sm btn-primary">Просмотр диалога</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}
