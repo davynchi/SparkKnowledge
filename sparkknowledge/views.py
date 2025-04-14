@@ -26,7 +26,7 @@ def setup_view(request):
     if request.method == "POST":
         form = QuizSetupForm(request.POST)
         if form.is_valid():
-            attempt = QuizAttempt.objects.create(
+            attempt = QuizAttempt.objects.create(  # pylint: disable=no-member
                 nickname=form.cleaned_data["nickname"],
                 theme=form.cleaned_data["theme"],
                 difficulty=form.cleaned_data["difficulty"],
@@ -48,6 +48,99 @@ def setup_view(request):
     return render(request, "sparkknowledge/setup.html", {"form": form})
 
 
+def parse_multiple_options(text):
+    """
+    Разбивает текст на непустые строки.
+    Если строк 4 и более, считает последние 4 как варианты ответа.
+    """
+    lines = [line.strip() for line in text.strip().split("\n") if line.strip() != ""]
+    return lines[-4:] if len(lines) >= 4 else []
+
+
+def get_quiz_context(attempt, conversation, feedback, remaining_time):
+    """
+    Собирает общий словарь контекста для передачи в шаблон викторины.
+    Добавляет варианты выбора, если задание с множественным выбором.
+    """
+    context = {
+        "attempt": attempt,
+        "history": conversation,
+        "feedback": feedback,
+        "remaining_time": remaining_time,
+    }
+    if attempt.question_type == "multiple":
+        context["multiple_options"] = parse_multiple_options(feedback)
+    return context
+
+
+def handle_initial_prompt(attempt):
+    """
+    Формирует и отправляет стартовый запрос к модели.
+    Обрабатывает возможные ошибки и возвращает ответ либо ошибку.
+    """
+    prompt = (
+        f"Ты образовательная модель для викторин по теме '{attempt.theme}'. "
+        f"Уровень сложности: '{attempt.difficulty}'. "
+        f"Тип задания: '{attempt.question_type}'. "
+        "Сформулируй ТОЛЬКО задание без лишнего текста. "
+        "Если задание имеет формат множественного выбора, "
+        "последние четыре строки должны быть вариантами (A, B, C, D) и не содержать пустых строк. "
+        "Если выбран тип 'Числовой ответ', не печатай варианты ответа. "
+        "Если необходимо записать математическое выражение, "
+        "используй формат LaTeX ($...$ или $$...$$)."
+    )
+    try:
+        return (
+            llm_client.complete_chat(
+                prompt="", messages=[{"role": "system", "content": prompt}]
+            ),
+            None,
+        )
+    except (SDKError, ConnectError, HTTPStatusError) as exc:
+        if isinstance(exc, ConnectError):
+            return None, "Возникли проблемы с соединением. Повторите попытку позже."
+        return (
+            None,
+            (
+                "Сервис Mistral временно недоступен из-за превышения "
+                "количества запросов. Повторите попытку позже."
+            ),
+        )
+
+
+def handle_model_evaluation(conversation):
+    """
+    Формирует запрос к модели для оценки ответа пользователя и генерации нового задания.
+    Возвращает ответ модели или сообщение об ошибке.
+    """
+    evaluation_prompt = (
+        "Оцени правильность ответа пользователя. Если ответ неверный, "
+        "кратко объясни ошибки и приведи правильный ответ. "
+        "Затем сформулируй ТОЛЬКО новое задание по той же теме. "
+        "Если задание имеет формат множественного выбора, "
+        "последние четыре строки должны быть вариантами "
+        "(A, B, C, D) и не содержать пустых строк. "
+        "Если выбран тип задания 'Числовой ответ', не включай никаких вариантов ответа. "
+        "Если необходимо записать математическое выражение, "
+        "используй формат LaTeX ($...$ или $$...$$)."
+    )
+    messages = [
+        {
+            "role": msg["role"] if msg["role"] != "model" else "assistant",
+            "content": msg["content"],
+        }
+        for msg in conversation
+    ]
+    messages.append({"role": "system", "content": evaluation_prompt})
+
+    try:
+        return llm_client.complete_chat(prompt="", messages=messages), None
+    except (SDKError, ConnectError, HTTPStatusError) as exc:
+        if isinstance(exc, ConnectError):
+            return None, "Возникли проблемы с соединением. Повторите попытку позже."
+        return None, "Сервис Mistral временно недоступен. Повторите попытку позже."
+
+
 def quiz_run_view(request, attempt_id):
     """
     Представление для проведения викторины.
@@ -61,90 +154,30 @@ def quiz_run_view(request, attempt_id):
     start_key = f"quiz_start_time_{attempt_id}"
     conversation = request.session.get(conv_key, [])
 
-    # Сохраняем время начала викторины, если ещё не сохранено.
     if start_key not in request.session:
         request.session[start_key] = time.time()
-    quiz_start_time = request.session[start_key]
-    elapsed_time = int(time.time() - quiz_start_time)
-    remaining_time = max(attempt.timer - elapsed_time, 0)
-
-    def parse_multiple_options(text):
-        """
-        Разбивает текст на непустые строки.
-        Если строк 4 и более, считает последние 4 как варианты ответа.
-        """
-        lines = [
-            line.strip() for line in text.strip().split("\n") if line.strip() != ""
-        ]
-        if len(lines) >= 4:
-            options = lines[-4:]
-        else:
-            options = []
-        return options
+    elapsed = int(time.time() - request.session[start_key])
+    remaining_time = max(attempt.timer - elapsed, 0)
 
     if request.method == "GET":
         if not conversation:
-            initial_prompt = (
-                f"Ты образовательная модель для викторин по теме '{attempt.theme}'. "
-                f"Уровень сложности: '{attempt.difficulty}'. "
-                f"Тип задания: '{attempt.question_type}'. "
-                "Сформулируй ТОЛЬКО задание без лишнего текста. "
-                "Если задание имеет формат множественного выбора, "
-                "последние четыре строки должны быть вариантами "
-                "(A, B, C, D) и не содержать пустых строк. "
-                "Если выбран тип 'Числовой ответ', не печатай варианты ответа. "
-                "Если необходимо записать математическое выражение, используй формат LaTeX "
-                "(оборачивай его в $...$ или $$...$$)."
-            )
-            try:
-                initial_assignment = llm_client.complete_chat(
-                    prompt="",
-                    messages=[{"role": "system", "content": initial_prompt}],
+            initial_assignment, error = handle_initial_prompt(attempt)
+            if error:
+                return render(
+                    request,
+                    "sparkknowledge/quiz_run.html",
+                    get_quiz_context(attempt, conversation, error, remaining_time),
                 )
-            except (SDKError, ConnectError, HTTPStatusError) as exc:
-                if isinstance(exc, ConnectError):
-                    error_message = (
-                        "Возникли проблемы с соединением. Повторите попытку позже."
-                    )
-                else:
-                    error_message = (
-                        "Сервис Mistral временно недоступен из-за превышения "
-                        "количества запросов. Повторите попытку позже."
-                    )
-                conversation = [{"role": "assistant", "content": error_message}]
-                request.session[conv_key] = conversation
-                context = {
-                    "attempt": attempt,
-                    "history": conversation,
-                    "error": error_message,
-                    "remaining_time": remaining_time,
-                }
-                return render(request, "sparkknowledge/quiz_run.html", context)
             conversation = [{"role": "assistant", "content": initial_assignment}]
             request.session[conv_key] = conversation
 
-        # Формируем отображаемый диалог:
-        if len(conversation) == 1:
-            history = conversation
-            feedback = conversation[0]["content"]
-        else:
-            history = conversation[:-1]
-            feedback = conversation[-1]["content"]
-
-        context = {
-            "attempt": attempt,
-            "history": history,
-            "feedback": feedback,
-            "remaining_time": remaining_time,
-        }
-        if attempt.question_type == "multiple":
-            options = parse_multiple_options(conversation[-1]["content"])
-            context.update(
-                {
-                    "multiple_options": options,
-                }
-            )
-        return render(request, "sparkknowledge/quiz_run.html", context)
+        history = conversation[:-1] if len(conversation) > 1 else []
+        feedback = conversation[-1]["content"] if conversation else ""
+        return render(
+            request,
+            "sparkknowledge/quiz_run.html",
+            get_quiz_context(attempt, history, feedback, remaining_time),
+        )
 
     if request.method == "POST":
         if "finish" in request.POST:
@@ -158,89 +191,54 @@ def quiz_run_view(request, attempt_id):
                 )
             )
 
-        if attempt.question_type == "multiple":
-            user_answer = request.POST.get("selected_option", "").strip()
-        else:
-            user_answer = request.POST.get("answer", "").strip()
-
+        user_answer = request.POST.get(
+            "selected_option" if attempt.question_type == "multiple" else "answer", ""
+        ).strip()
         if not user_answer:
-            context = {
-                "attempt": attempt,
-                "error": "Пожалуйста, введите ответ.",
-                "history": conversation,
-                "remaining_time": remaining_time,
-            }
-            if attempt.question_type == "multiple":
-                options = parse_multiple_options(conversation[-1]["content"])
-                context.update({"multiple_options": options})
-            return render(request, "sparkknowledge/quiz_run.html", context)
+            return render(
+                request,
+                "sparkknowledge/quiz_run.html",
+                {
+                    **get_quiz_context(
+                        attempt,
+                        conversation,
+                        "Пожалуйста, введите ответ.",
+                        remaining_time,
+                    )
+                },
+            )
 
         conversation.append({"role": "user", "content": user_answer})
-        messages = []
-        for msg in conversation:
-            role = msg["role"] if msg["role"] != "model" else "assistant"
-            messages.append({"role": role, "content": msg["content"]})
-        evaluation_prompt = (
-            "Оцени правильность ответа пользователя. Если ответ неверный, "
-            "кратко объясни ошибки и приведи правильный ответ. "
-            "Затем сформулируй ТОЛЬКО новое задание по той же теме. "
-            "Если задание имеет формат множественного выбора, "
-            "последние четыре строки должны быть вариантами "
-            "(A, B, C, D) и не содержать пустых строк. "
-            "Если выбран тип задания 'Числовой ответ', не включай никаких вариантов ответа. "
-            "Если необходимо записать математическое выражение, "
-            "используй формат LaTeX (оборачивай его в $...$ или $$...$$)."
-        )
-        messages.append({"role": "system", "content": evaluation_prompt})
-        try:
-            model_response = llm_client.complete_chat(prompt="", messages=messages)
-        except (SDKError, ConnectError, HTTPStatusError) as exc:
-            if isinstance(exc, ConnectError):
-                error_message = (
-                    "Возникли проблемы с соединением. Повторите попытку позже."
-                )
-            else:
-                error_message = (
-                    "Сервис Mistral временно недоступен из-за превышения "
-                    "количества запросов. Повторите попытку позже."
-                )
-            context = {
-                "attempt": attempt,
-                "history": conversation,
-                "error": error_message,
-                "remaining_time": remaining_time,
-            }
-            if attempt.question_type == "multiple":
-                options = parse_multiple_options(conversation[-1]["content"])
-                context.update({"multiple_options": options})
-            return render(request, "sparkknowledge/quiz_run.html", context)
+        model_response, error = handle_model_evaluation(conversation)
+        if error:
+            return render(
+                request,
+                "sparkknowledge/quiz_run.html",
+                get_quiz_context(attempt, conversation, error, remaining_time),
+            )
 
         conversation.append({"role": "assistant", "content": model_response})
         request.session[conv_key] = conversation
 
-        if len(conversation) > 1:
-            history = conversation[:-1]
-            feedback = conversation[-1]["content"]
-        else:
-            history = conversation
-            feedback = conversation[-1]["content"] if conversation else ""
-        context = {
-            "attempt": attempt,
-            "history": history,
-            "feedback": feedback,
-            "remaining_time": remaining_time,
-        }
-        if attempt.question_type == "multiple":
-            options = parse_multiple_options(model_response)
-            context.update({"multiple_options": options})
-        return render(request, "sparkknowledge/quiz_run.html", context)
+        return render(
+            request,
+            "sparkknowledge/quiz_run.html",
+            get_quiz_context(
+                attempt,
+                conversation[:-1] if len(conversation) > 1 else [],
+                model_response,
+                remaining_time,
+            ),
+        )
 
 
 def attempt_list_view(request):
     """
     Отображает список всех попыток викторины.
     """
-    attempts = QuizAttempt.objects.all().order_by("-created_at")
+    attempts = QuizAttempt.objects.all().order_by(
+        "-created_at"
+    )  # pylint: disable=no-member
     return render(request, "sparkknowledge/attempt_list.html", {"attempts": attempts})
 
 
